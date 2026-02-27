@@ -1,0 +1,163 @@
+:root {
+  --primary: #646cff;
+  --bg: #1a1a1a;
+  --card-bg: #2a2a2a;
+  --text: #ffffff;
+  --text-muted: #a0a0a0;
+  --accent: #ff4757;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+.app-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+header h1 {
+  font-size: 3rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.icon-header {
+  color: var(--primary);
+}
+
+.controls {
+  margin-bottom: 2rem;
+  display: flex;
+  justify-content: center;
+}
+
+.name-input {
+  padding: 0.8rem 1.2rem;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #222;
+  color: white;
+  width: 100%;
+  max-width: 300px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+@media (max-width: 768px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+h2 {
+  border-bottom: 2px solid var(--primary);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.song-list, .request-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.song-card, .request-card {
+  background: var(--card-bg);
+  padding: 1rem;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: transform 0.2s;
+}
+
+.song-card:hover {
+  transform: translateY(-2px);
+}
+
+.song-info, .request-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.song-title {
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.song-artist, .song-requester {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.btn-request, .btn-vote, .btn-remove {
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.btn-request {
+  background: var(--primary);
+  color: white;
+}
+
+.btn-vote {
+  background: #2ecc71;
+  color: white;
+}
+
+.btn-remove {
+  background: transparent;
+  color: var(--accent);
+}
+
+.btn-remove:hover {
+  background: rgba(255, 71, 87, 0.1);
+}
+
+.votes-badge {
+  background: var(--primary);
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.request-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.empty-msg {
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 2rem;
+}
