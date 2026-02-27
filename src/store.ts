@@ -1,4 +1,18 @@
 import { create } from 'zustand';
+import { 
+  collection, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  query, 
+  orderBy,
+  increment,
+  setDoc,
+  writeBatch
+} from 'firebase/firestore';
+import { db } from './firebase';
 
 export interface Song {
   id: string;
@@ -15,41 +29,94 @@ export interface SongRequest extends Song {
 interface SongStore {
   playlist: Song[];
   requests: SongRequest[];
-  addRequest: (song: Song, requester: string) => void;
-  voteRequest: (id: string) => void;
-  removeRequest: (id: string) => void;
+  loading: boolean;
+  
+  // Initialization
+  init: () => () => void; // returns unsubscribe function
+  
+  // Actions for Punters
+  addRequest: (song: Song, requester: string) => Promise<void>;
+  voteRequest: (requestId: string) => Promise<void>;
+  
+  // Actions for Admin
+  addSongToPlaylist: (song: Omit<Song, 'id'>) => Promise<void>;
+  removeSongFromPlaylist: (id: string) => Promise<void>;
+  removeRequest: (id: string) => Promise<void>;
+  clearAllRequests: () => Promise<void>;
+  loadDemoSongs: (songs: Omit<Song, 'id'>[]) => Promise<void>;
 }
 
-export const useSongStore = create<SongStore>((set) => ({
-  playlist: [
-    { id: '1', title: 'Wonderwall', artist: 'Oasis' },
-    { id: '2', title: 'Mr. Brightside', artist: 'The Killers' },
-    { id: '3', title: 'Sweet Caroline', artist: 'Neil Diamond' },
-    { id: '4', title: "Don't Stop Believin'", artist: 'Journey' },
-    { id: '5', title: 'Bohemian Rhapsody', artist: 'Queen' },
-    { id: '6', title: 'Seven Nation Army', artist: 'The White Stripes' },
-    { id: '7', title: 'Smells Like Teen Spirit', artist: 'Nirvana' },
-    { id: '8', title: 'Billie Jean', artist: 'Michael Jackson' },
-  ],
+export const useSongStore = create<SongStore>((set, get) => ({
+  playlist: [],
   requests: [],
-  addRequest: (song, requester) => set((state) => {
-    // Check if already requested to prevent duplicates or just add a new instance
-    const existing = state.requests.find(r => r.id === song.id);
-    if (existing) {
-        return {
-            requests: state.requests.map(r => 
-                r.id === song.id ? { ...r, votes: r.votes + 1 } : r
-            )
-        };
-    }
-    return {
-      requests: [...state.requests, { ...song, requestedBy: requester, timestamp: Date.now(), votes: 1 }]
+  loading: true,
+
+  init: () => {
+    const qSongs = query(collection(db, 'songs'), orderBy('title'));
+    const qRequests = query(collection(db, 'requests'), orderBy('votes', 'desc'));
+
+    const unsubSongs = onSnapshot(qSongs, (snapshot) => {
+      const playlist = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Song));
+      set({ playlist, loading: false });
+    });
+
+    const unsubRequests = onSnapshot(qRequests, (snapshot) => {
+      const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SongRequest));
+      set({ requests });
+    });
+
+    return () => {
+      unsubSongs();
+      unsubRequests();
     };
-  }),
-  voteRequest: (id) => set((state) => ({
-    requests: state.requests.map(r => r.id === id ? { ...r, votes: r.votes + 1 } : r)
-  })),
-  removeRequest: (id) => set((state) => ({
-    requests: state.requests.filter(r => r.id !== id)
-  })),
+  },
+
+  addRequest: async (song, requester) => {
+    const existing = get().requests.find(r => r.id === song.id);
+    if (existing) {
+      const docRef = doc(db, 'requests', song.id);
+      await updateDoc(docRef, { votes: increment(1) });
+    } else {
+      await setDoc(doc(db, 'requests', song.id), {
+        title: song.title,
+        artist: song.artist,
+        requestedBy: requester,
+        timestamp: Date.now(),
+        votes: 1
+      });
+    }
+  },
+
+  voteRequest: async (id) => {
+    const docRef = doc(db, 'requests', id);
+    await updateDoc(docRef, { votes: increment(1) });
+  },
+
+  addSongToPlaylist: async (song) => {
+    await addDoc(collection(db, 'songs'), song);
+  },
+
+  removeSongFromPlaylist: async (id) => {
+    await deleteDoc(doc(db, 'songs', id));
+  },
+
+  removeRequest: async (id) => {
+    await deleteDoc(doc(db, 'requests', id));
+  },
+
+  clearAllRequests: async () => {
+    const { requests } = get();
+    for (const req of requests) {
+      await deleteDoc(doc(db, 'requests', req.id));
+    }
+  },
+
+  loadDemoSongs: async (songs) => {
+    const batch = writeBatch(db);
+    songs.forEach((song) => {
+      const newDocRef = doc(collection(db, 'songs'));
+      batch.set(newDocRef, song);
+    });
+    await batch.commit();
+  }
 }));
