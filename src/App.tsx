@@ -2,45 +2,45 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { useSongStore } from './store';
 import type { Song } from './store';
-import { Music, Plus, ThumbsUp, Mic2, ShieldCheck, AlertCircle, Clock } from 'lucide-react';
+import { Music, Plus, ThumbsUp, Mic2, ShieldCheck, AlertCircle, Clock, MessageCircleHeart } from 'lucide-react';
 import AdminPage from './AdminPage';
 import './App.css';
 
 const PunterView: React.FC = () => {
-  const { playlist, requests, addRequest, voteRequest, init, loading, error, lastRequestTime } = useSongStore();
+  const { playlist, requests, addRequest, voteRequest, init, loading, error, lastRequestTime, unlockCooldown } = useSongStore();
   const [requesterName, setRequesterName] = useState('');
   const [minutesLeft, setMinutesLeft] = useState(0);
 
-  useEffect(() => {
-    const unsub = init();
-    return () => unsub();
-  }, [init]);
-
   // Update cooldown timer every minute
   useEffect(() => {
+    const unsub = init();
     const checkCooldown = () => {
       if (lastRequestTime) {
-        const now = Date.now();
-        const diff = now - lastRequestTime;
-        const remaining = 15 * 60 * 1000 - diff;
-        if (remaining > 0) {
-          setMinutesLeft(Math.ceil(remaining / 60000));
-        } else {
-          setMinutesLeft(0);
-        }
+        const remaining = 15 * 60 * 1000 - (Date.now() - lastRequestTime);
+        setMinutesLeft(remaining > 0 ? Math.ceil(remaining / 60000) : 0);
       }
     };
-
     checkCooldown();
     const interval = setInterval(checkCooldown, 10000);
-    return () => clearInterval(interval);
-  }, [lastRequestTime]);
+    return () => { unsub(); clearInterval(interval); };
+  }, [init, lastRequestTime]);
 
-  const handleRequest = async (song: Song) => {
+  const handleRequest = async (song: Song, isBribe = false) => {
     const name = requesterName.trim() || 'Anonymous';
-    const result = await addRequest(song, name);
+    const result = await addRequest(song, name, isBribe);
     if (!result.success && result.message) {
       alert(result.message);
+    }
+  };
+
+  const handleBribe = () => {
+    const paypalMe = "https://paypal.me/YOUR_USER_ID/5"; // Replace with your actual PayPal.Me link
+    window.open(paypalMe, '_blank');
+    
+    // After they pay, they can manually unlock. 
+    // In a real app we'd wait for a webhook, but for a gig, trust is fine.
+    if (window.confirm("Once you have sent the $5 bribe, click OK to unlock your next request!")) {
+      unlockCooldown();
     }
   };
 
@@ -56,8 +56,13 @@ const PunterView: React.FC = () => {
         <p>Request your favorite songs from the band!</p>
         
         {minutesLeft > 0 && (
-          <div className="cooldown-badge">
-            <Clock size={16} /> Request cooldown active: {minutesLeft} min
+          <div className="cooldown-container">
+            <div className="cooldown-badge">
+              <Clock size={16} /> Request cooldown: {minutesLeft} min
+            </div>
+            <button onClick={handleBribe} className="btn-bribe">
+              <MessageCircleHeart size={18} /> Bribe the Band ($5)
+            </button>
           </div>
         )}
       </header>
@@ -84,54 +89,49 @@ const PunterView: React.FC = () => {
           <section className="playlist-section">
             <h2>Available Songs</h2>
             <div className="song-list">
-              {playlist.length === 0 ? (
-                <p className="empty-msg">No songs available in the playlist yet.</p>
-              ) : (
-                playlist.map(song => (
-                  <div key={song.id} className="song-card">
-                    <div className="song-info">
-                      <Music size={18} />
-                      <div>
-                        <div className="song-name">{song.song_name}</div>
-                        <div className="song-artist">{song.artist}</div>
-                      </div>
+              {playlist.map(song => (
+                <div key={song.id} className="song-card">
+                  <div className="song-info">
+                    <Music size={18} />
+                    <div>
+                      <div className="song-name">{song.song_name}</div>
+                      <div className="song-artist">{song.artist}</div>
                     </div>
-                    <button 
-                      onClick={() => handleRequest(song)} 
-                      className={`btn-request ${minutesLeft > 0 ? 'disabled' : ''}`}
-                      disabled={minutesLeft > 0}
-                    >
-                      <Plus size={16} /> Request
-                    </button>
                   </div>
-                ))
-              )}
+                  <button 
+                    onClick={() => handleRequest(song)} 
+                    className={`btn-request ${minutesLeft > 0 ? 'disabled' : ''}`}
+                    disabled={minutesLeft > 0}
+                  >
+                    <Plus size={16} /> Request
+                  </button>
+                </div>
+              ))}
             </div>
           </section>
 
           <section className="requests-section">
             <h2>Queue</h2>
             <div className="request-list">
-              {requests.length === 0 ? (
-                <p className="empty-msg">No requests yet. Be the first!</p>
-              ) : (
-                requests.map(req => (
-                  <div key={req.id} className="request-card">
-                    <div className="request-info">
-                      <div className="votes-badge">{req.votes}</div>
-                      <div>
-                        <div className="song-name">{req.song_name}</div>
-                        <div className="song-requester">Requested by {req.requestedBy}</div>
+              {requests.map(req => (
+                <div key={req.id} className="request-card">
+                  <div className={`request-info ${req.isBribe ? 'bribe-info' : ''}`}>
+                    <div className="votes-badge">{req.votes}</div>
+                    <div>
+                      <div className="song-name">
+                        {req.song_name}
+                        {req.isBribe && <span className="bribe-tag">💰 BRIBED</span>}
                       </div>
-                    </div>
-                    <div className="request-actions">
-                      <button onClick={() => voteRequest(req.id)} className="btn-vote">
-                        <ThumbsUp size={16} />
-                      </button>
+                      <div className="song-requester">Requested by {req.requestedBy}</div>
                     </div>
                   </div>
-                ))
-              )}
+                  <div className="request-actions">
+                    <button onClick={() => voteRequest(req.id)} className="btn-vote">
+                      <ThumbsUp size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
         </div>

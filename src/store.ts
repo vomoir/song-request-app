@@ -26,6 +26,7 @@ export interface SongRequest extends Song {
   requestedBy: string;
   timestamp: number;
   votes: number;
+  isBribe?: boolean; // Flag for paid requests
 }
 
 interface SongStore {
@@ -37,7 +38,7 @@ interface SongStore {
   
   init: () => () => void;
   
-  addRequest: (song: Song, requester: string) => Promise<{ success: boolean; message?: string }>;
+  addRequest: (song: Song, requester: string, isBribe?: boolean) => Promise<{ success: boolean; message?: string }>;
   voteRequest: (requestId: string) => Promise<void>;
   
   addSongToPlaylist: (song: Omit<Song, 'id'>) => Promise<boolean>;
@@ -47,9 +48,10 @@ interface SongStore {
   removeRequest: (id: string) => Promise<void>;
   clearAllRequests: () => Promise<void>;
   loadDemoSongs: (songs: Omit<Song, 'id'>[]) => Promise<{ added: number, skipped: number }>;
+  unlockCooldown: () => void;
 }
 
-const THROTTLE_TIME = 15 * 60 * 1000; // 15 minutes in ms
+const THROTTLE_TIME = 15 * 60 * 1000;
 
 export const useSongStore = create<SongStore>((set, get) => ({
   playlist: [],
@@ -64,74 +66,67 @@ export const useSongStore = create<SongStore>((set, get) => ({
     const qSongs = query(collection(db, 'songs'));
     const qRequests = query(collection(db, 'requests'), orderBy('votes', 'desc'));
 
-    const unsubSongs = onSnapshot(qSongs, 
-      (snapshot) => {
-        const playlist = snapshot.docs
-          .map(doc => ({ id: doc.id, ...doc.data() } as Song))
-          .filter(song => !song.deleted)
-          .sort((a, b) => a.song_name.localeCompare(b.song_name));
-        set({ playlist, loading: false });
-      },
-      (error) => {
-        console.error("Firestore Songs Error:", error);
-        set({ error: error.message, loading: false });
-      }
-    );
+    const unsubSongs = onSnapshot(qSongs, (snapshot) => {
+      const playlist = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Song))
+        .filter(song => !song.deleted)
+        .sort((a, b) => a.song_name.localeCompare(b.song_name));
+      set({ playlist, loading: false });
+    }, (error) => set({ error: error.message, loading: false }));
 
-    const unsubRequests = onSnapshot(qRequests, 
-      (snapshot) => {
-        const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SongRequest));
-        set({ requests });
-      },
-      (error) => {
-        console.error("Firestore Requests Error:", error);
-      }
-    );
+    const unsubRequests = onSnapshot(qRequests, (snapshot) => {
+      const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SongRequest));
+      set({ requests });
+    }, (error) => console.error(error));
 
-    return () => {
-      unsubSongs();
-      unsubRequests();
-    };
+    return () => { unsubSongs(); unsubRequests(); };
   },
 
-  addRequest: async (song, requester) => {
+  addRequest: async (song, requester, isBribe = false) => {
     const now = Date.now();
     const { lastRequestTime } = get();
 
-    // Check Throttling
-    if (lastRequestTime && (now - lastRequestTime < THROTTLE_TIME)) {
-      const minutesLeft = Math.ceil((THROTTLE_TIME - (now - lastRequestTime)) / 60000);
-      return { 
-        success: false, 
-        message: `You can only request one song every 15 minutes. Please wait ${minutesLeft} more minutes.` 
-      };
+    // Only check throttle if NOT a bribe
+    if (!isBribe && lastRequestTime && (now - lastRequestTime < THROTTLE_TIME)) {
+      return { success: false, message: "Cooldown active." };
     }
 
     try {
       const existing = get().requests.find(r => r.id === song.id);
       if (existing) {
         const docRef = doc(db, 'requests', song.id);
-        await updateDoc(docRef, { votes: increment(1) });
+        await updateDoc(docRef, { 
+          votes: increment(isBribe ? 10 : 1), // Bribes get a massive vote boost
+          isBribe: isBribe || existing.isBribe 
+        });
       } else {
         await setDoc(doc(db, 'requests', song.id), {
           song_name: song.song_name,
           artist: song.artist,
           requestedBy: requester,
           timestamp: now,
-          votes: 1
+          votes: isBribe ? 10 : 1,
+          isBribe: isBribe
         });
       }
 
-      // Update throttle timestamp
-      set({ lastRequestTime: now });
-      localStorage.setItem('last_request_timestamp', now.toString());
+      if (!isBribe) {
+        set({ lastRequestTime: now });
+        localStorage.setItem('last_request_timestamp', now.toString());
+      }
       
       return { success: true };
     } catch (err: any) {
-      return { success: false, message: "Error submitting request: " + err.message };
+      return { success: false, message: err.message };
     }
   },
 
+  unlockCooldown: () => {
+    set({ lastRequestTime: null });
+    localStorage.removeItem('last_request_timestamp');
+  },
+
+  // ... (keeping other methods same as before)
   voteRequest: async (id) => {
     const docRef = doc(db, 'requests', id);
     await updateDoc(docRef, { votes: increment(1) });
@@ -139,25 +134,18 @@ export const useSongStore = create<SongStore>((set, get) => ({
 
   addSongToPlaylist: async (song) => {
     const { playlist } = get();
-    const isDuplicate = playlist.some(
-      s => s.song_name.toLowerCase() === song.song_name.toLowerCase() && 
-           s.artist.toLowerCase() === song.artist.toLowerCase()
-    );
-
+    const isDuplicate = playlist.some(s => s.song_name.toLowerCase() === song.song_name.toLowerCase() && s.artist.toLowerCase() === song.artist.toLowerCase());
     if (isDuplicate) return false;
-
     await addDoc(collection(db, 'songs'), { ...song, deleted: false });
     return true;
   },
 
   updateSong: async (id, updates) => {
-    const docRef = doc(db, 'songs', id);
-    await updateDoc(docRef, updates);
+    await updateDoc(doc(db, 'songs', id), updates);
   },
 
   softDeleteSong: async (id) => {
-    const docRef = doc(db, 'songs', id);
-    await updateDoc(docRef, { deleted: true });
+    await updateDoc(doc(db, 'songs', id), { deleted: true });
   },
 
   removeSongFromPlaylist: async (id) => {
@@ -170,39 +158,22 @@ export const useSongStore = create<SongStore>((set, get) => ({
 
   clearAllRequests: async () => {
     const { requests } = get();
-    for (const req of requests) {
-      await deleteDoc(doc(db, 'requests', req.id));
-    }
+    for (const req of requests) await deleteDoc(doc(db, 'requests', req.id));
   },
 
   loadDemoSongs: async (songs) => {
     const snapshot = await getDocs(collection(db, 'songs'));
     const currentSongs = snapshot.docs.map(doc => doc.data() as Song);
-    
     const batch = writeBatch(db);
-    let added = 0;
-    let skipped = 0;
-
+    let added = 0; let skipped = 0;
     songs.forEach((song) => {
-      const exists = currentSongs.some(
-        s => s.song_name.toLowerCase() === song.song_name.toLowerCase() && 
-             s.artist.toLowerCase() === song.artist.toLowerCase() &&
-             !s.deleted
-      );
-
+      const exists = currentSongs.some(s => s.song_name.toLowerCase() === song.song_name.toLowerCase() && s.artist.toLowerCase() === song.artist.toLowerCase() && !s.deleted);
       if (!exists) {
-        const newDocRef = doc(collection(db, 'songs'));
-        batch.set(newDocRef, { ...song, deleted: false });
+        batch.set(doc(collection(db, 'songs')), { ...song, deleted: false });
         added++;
-      } else {
-        skipped++;
-      }
+      } else skipped++;
     });
-
-    if (added > 0) {
-      await batch.commit();
-    }
-    
+    if (added > 0) await batch.commit();
     return { added, skipped };
   }
 }));
