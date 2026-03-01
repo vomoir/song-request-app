@@ -1,0 +1,20 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Explicitly allow read and write for the songs collection
+    match /songs/{song} {
+      allow read, write: if true; 
+    }
+    
+    // Explicitly allow read and write for the requests collection
+    match /requests/{request} {
+      allow read, write: if true;
+    }
+    
+    // Fallback for any other collections
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

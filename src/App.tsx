@@ -2,25 +2,49 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { useSongStore } from './store';
 import type { Song } from './store';
-import { Music, Plus, ThumbsUp, Mic2, ShieldCheck } from 'lucide-react';
+import { Music, Plus, ThumbsUp, Mic2, ShieldCheck, AlertCircle, Clock } from 'lucide-react';
 import AdminPage from './AdminPage';
 import './App.css';
 
 const PunterView: React.FC = () => {
-  const { playlist, requests, addRequest, voteRequest, init, loading } = useSongStore();
+  const { playlist, requests, addRequest, voteRequest, init, loading, error, lastRequestTime } = useSongStore();
   const [requesterName, setRequesterName] = useState('');
+  const [minutesLeft, setMinutesLeft] = useState(0);
 
   useEffect(() => {
     const unsub = init();
     return () => unsub();
   }, [init]);
 
-  const handleRequest = (song: Song) => {
+  // Update cooldown timer every minute
+  useEffect(() => {
+    const checkCooldown = () => {
+      if (lastRequestTime) {
+        const now = Date.now();
+        const diff = now - lastRequestTime;
+        const remaining = 15 * 60 * 1000 - diff;
+        if (remaining > 0) {
+          setMinutesLeft(Math.ceil(remaining / 60000));
+        } else {
+          setMinutesLeft(0);
+        }
+      }
+    };
+
+    checkCooldown();
+    const interval = setInterval(checkCooldown, 10000);
+    return () => clearInterval(interval);
+  }, [lastRequestTime]);
+
+  const handleRequest = async (song: Song) => {
     const name = requesterName.trim() || 'Anonymous';
-    addRequest(song, name);
+    const result = await addRequest(song, name);
+    if (!result.success && result.message) {
+      alert(result.message);
+    }
   };
 
-  if (loading) return <div className="loading">Loading Gig Data...</div>;
+  if (loading) return <div className="loading">Connecting to the gig...</div>;
 
   return (
     <div className="app-container">
@@ -30,7 +54,20 @@ const PunterView: React.FC = () => {
         </div>
         <h1><Mic2 className="icon-header" /> GigRequest</h1>
         <p>Request your favorite songs from the band!</p>
+        
+        {minutesLeft > 0 && (
+          <div className="cooldown-badge">
+            <Clock size={16} /> Request cooldown active: {minutesLeft} min
+          </div>
+        )}
       </header>
+
+      {error && (
+        <div className="error-banner">
+          <AlertCircle size={20} />
+          <span>Error connecting to the band's playlist: {error}.</span>
+        </div>
+      )}
 
       <main>
         <section className="controls">
@@ -55,11 +92,15 @@ const PunterView: React.FC = () => {
                     <div className="song-info">
                       <Music size={18} />
                       <div>
-                        <div className="song-title">{song.title}</div>
+                        <div className="song-name">{song.song_name}</div>
                         <div className="song-artist">{song.artist}</div>
                       </div>
                     </div>
-                    <button onClick={() => handleRequest(song)} className="btn-request">
+                    <button 
+                      onClick={() => handleRequest(song)} 
+                      className={`btn-request ${minutesLeft > 0 ? 'disabled' : ''}`}
+                      disabled={minutesLeft > 0}
+                    >
                       <Plus size={16} /> Request
                     </button>
                   </div>
@@ -79,7 +120,7 @@ const PunterView: React.FC = () => {
                     <div className="request-info">
                       <div className="votes-badge">{req.votes}</div>
                       <div>
-                        <div className="song-title">{req.title}</div>
+                        <div className="song-name">{req.song_name}</div>
                         <div className="song-requester">Requested by {req.requestedBy}</div>
                       </div>
                     </div>
