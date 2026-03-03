@@ -1,19 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSongStore } from './store';
-import { Trash2, Plus, LogOut, Settings, ListMusic, History, Download } from 'lucide-react';
+import type { Song } from './store';
+import { Trash2, Plus, LogOut, Settings, ListMusic, History, Download, Edit2, Check, X, AlertCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import demoSongs from './demo-songs.json';
 
 const AdminPage: React.FC = () => {
-  const { playlist, requests, addSongToPlaylist, removeSongFromPlaylist, removeRequest, clearAllRequests, loadDemoSongs } = useSongStore();
+  const { playlist, requests, addSongToPlaylist, softDeleteSong, removeRequest, clearAllRequests, loadDemoSongs, updateSong, init, loading, error } = useSongStore();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
-  const [newSong, setNewSong] = useState({ title: '', artist: '' });
+  const [newSong, setNewSong] = useState({ song_name: '', artist: '' });
   const [isUploading, setIsUploading] = useState(false);
+  
+  // Edit State
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editSongName, setEditSongName] = useState('');
+  const [editArtist, setEditArtist] = useState('');
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      const unsub = init();
+      return () => unsub();
+    }
+  }, [isAuthenticated, init]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === 'gig2026') { // Simple prototype password
+    if (password === 'gig2026') {
       setIsAuthenticated(true);
     } else {
       alert('Wrong password!');
@@ -22,9 +35,26 @@ const AdminPage: React.FC = () => {
 
   const handleAddSong = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newSong.title && newSong.artist) {
-      await addSongToPlaylist(newSong);
-      setNewSong({ title: '', artist: '' });
+    if (newSong.song_name && newSong.artist) {
+      const success = await addSongToPlaylist(newSong);
+      if (success) {
+        setNewSong({ song_name: '', artist: '' });
+      } else {
+        alert("This song is already in your playlist!");
+      }
+    }
+  };
+
+  const handleStartEdit = (song: Song) => {
+    setEditingId(song.id);
+    setEditSongName(song.song_name);
+    setEditArtist(song.artist);
+  };
+
+  const handleSaveEdit = async (id: string) => {
+    if (editSongName && editArtist) {
+      await updateSong(id, { song_name: editSongName, artist: editArtist });
+      setEditingId(null);
     }
   };
 
@@ -32,11 +62,10 @@ const AdminPage: React.FC = () => {
     if (window.confirm('This will add the demo song list to your current playlist. Continue?')) {
       setIsUploading(true);
       try {
-        await loadDemoSongs(demoSongs);
-        alert('Demo songs loaded successfully!');
-      } catch (error) {
-        console.error('Error loading demo songs:', error);
-        alert('Failed to load demo songs.');
+        const result = await loadDemoSongs(demoSongs);
+        alert(`Finished! Added ${result.added} new songs, skipped ${result.skipped} duplicates.`);
+      } catch (err: any) {
+        alert("Error loading demo songs: " + err.message);
       } finally {
         setIsUploading(false);
       }
@@ -73,14 +102,21 @@ const AdminPage: React.FC = () => {
         </div>
       </header>
 
+      {error && (
+        <div className="error-banner">
+          <AlertCircle size={20} />
+          <span>Error loading data: {error}. Check your Firestore Rules!</span>
+        </div>
+      )}
+
       <div className="admin-grid">
         <section className="manage-songs">
           <h2><ListMusic /> Manage Playlist</h2>
           <form onSubmit={handleAddSong} className="add-song-form">
             <input 
               placeholder="Song Title" 
-              value={newSong.title}
-              onChange={e => setNewSong({...newSong, title: e.target.value})}
+              value={newSong.song_name}
+              onChange={e => setNewSong({...newSong, song_name: e.target.value})}
             />
             <input 
               placeholder="Artist" 
@@ -91,12 +127,34 @@ const AdminPage: React.FC = () => {
           </form>
 
           <div className="admin-list">
-            {playlist.map(song => (
-              <div key={song.id} className="admin-item">
-                <span><strong>{song.title}</strong> - {song.artist}</span>
-                <button onClick={() => removeSongFromPlaylist(song.id)} className="btn-delete"><Trash2 size={16}/></button>
-              </div>
-            ))}
+            {loading ? (
+              <p className="status-msg">Connecting to Firestore...</p>
+            ) : playlist.length === 0 ? (
+              <p className="status-msg">No songs found. Use "Load Demo List" to start.</p>
+            ) : (
+              playlist.map(song => (
+                <div key={song.id} className="admin-item">
+                  {editingId === song.id ? (
+                    <div className="edit-mode-inputs">
+                      <input value={editSongName} onChange={e => setEditSongName(e.target.value)} />
+                      <input value={editArtist} onChange={e => setEditArtist(e.target.value)} />
+                      <div className="edit-actions">
+                        <button onClick={() => handleSaveEdit(song.id)} className="btn-save"><Check size={16}/></button>
+                        <button onClick={() => setEditingId(null)} className="btn-cancel"><X size={16}/></button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <span><strong>{song.song_name}</strong> - {song.artist}</span>
+                      <div className="admin-item-actions">
+                        <button onClick={() => handleStartEdit(song)} className="btn-edit"><Edit2 size={16}/></button>
+                        <button onClick={() => softDeleteSong(song.id)} className="btn-delete"><Trash2 size={16}/></button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </section>
 
@@ -106,15 +164,19 @@ const AdminPage: React.FC = () => {
             <button onClick={clearAllRequests} className="btn-clear">Clear All</button>
           </div>
           <div className="admin-list">
-            {requests.map(req => (
-              <div key={req.id} className="admin-item request-item">
-                <div className="req-meta">
-                  <span className="votes-count">{req.votes}</span>
-                  <strong>{req.title}</strong>
+            {requests.length === 0 ? (
+              <p className="status-msg">No active requests.</p>
+            ) : (
+              requests.map(req => (
+                <div key={req.id} className="admin-item request-item">
+                  <div className="req-meta">
+                    <span className="votes-count">{req.votes}</span>
+                    <strong>{req.song_name}</strong>
+                  </div>
+                  <button onClick={() => removeRequest(req.id)} className="btn-delete"><Trash2 size={16}/></button>
                 </div>
-                <button onClick={() => removeRequest(req.id)} className="btn-delete"><Trash2 size={16}/></button>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </section>
       </div>

@@ -122,7 +122,7 @@ h2 {
   gap: 1rem;
 }
 
-.song-title {
+.song-name {
   font-weight: bold;
   font-size: 1.1rem;
 }
@@ -146,6 +146,73 @@ h2 {
 .btn-request {
   background: var(--primary);
   color: white;
+}
+
+.btn-request.disabled {
+  background: #444;
+  cursor: not-allowed !important;
+  opacity: 0.6;
+}
+
+.cooldown-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.cooldown-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.btn-bribe {
+  background: #ffc107;
+  color: #1a1a1a;
+  border: none;
+  padding: 0.6rem 1.5rem;
+  border-radius: 30px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: transform 0.2s, background 0.2s;
+  animation: pulse 2s infinite;
+}
+
+.btn-bribe:hover {
+  transform: scale(1.05);
+  background: #ffdb4d;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+}
+
+.bribe-tag {
+  background: #ffc107;
+  color: #1a1a1a;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+  font-weight: 900;
+}
+
+.bribe-info {
+  border-left: 4px solid #ffc107;
+  padding-left: 12px !important;
 }
 
 .btn-vote {
@@ -319,6 +386,54 @@ h2 {
   cursor: not-allowed;
 }
 
+.admin-item-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.edit-mode-inputs {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.edit-mode-inputs input {
+  flex: 1;
+  padding: 4px 8px;
+  background: #111;
+  border: 1px solid #444;
+  color: white;
+  border-radius: 4px;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 0.2rem;
+}
+
+.btn-edit {
+  background: transparent;
+  color: var(--primary);
+  border: none;
+  cursor: pointer;
+}
+
+.btn-save {
+  background: #2ecc71;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-cancel {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
 .btn-clear {
   background: var(--accent);
   color: white;
@@ -327,6 +442,25 @@ h2 {
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.8rem;
+}
+
+.error-banner {
+  background: #ff4757;
+  color: white;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-weight: 500;
+}
+
+.status-msg {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 1rem;
+  font-style: italic;
 }
 
 .section-header {
